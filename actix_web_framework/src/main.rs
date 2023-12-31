@@ -1,42 +1,36 @@
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use std::sync::Mutex;
 
-#[get("/macro_style")]
-async fn macro_style() -> impl Responder {
-    HttpResponse::Ok().body("Hello macro service style")   
-}
-
-#[post("/echo")]
-async fn echo(req_body: String) -> impl Responder {
-    HttpResponse::Ok().body(req_body)
-}
-
-async fn manual_hello() -> impl Responder {
-    HttpResponse::Ok().body("Hey there")
-}
-
-struct AppState {
+struct CounterState {
     counter: Mutex<i32>,
 }
 
-async fn index(data: web::Data<AppState>) -> String {
+async fn counter_handler(data: web::Data<CounterState>) -> String {
     let mut counter = data.counter.lock().unwrap();
     *counter += 1;
     format!("Request number {counter}")
 }
 
+fn counting_config(cfg: &mut web::ServiceConfig) {
+    let counter = web::Data::new(CounterState{
+        counter: Mutex::new(0)
+    });
+
+    cfg.service(
+        web::resource("/")
+        .app_data(counter.clone())
+        .route(web::get().to(counter_handler))
+        .route(web::head().to(|| async { HttpResponse::MethodNotAllowed() }))
+        .route(web::post().to(|| async { HttpResponse::MethodNotAllowed() }))
+        .route(web::put().to(|| async { HttpResponse::MethodNotAllowed() }))
+    );
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let counter = web::Data::new(AppState{
-        counter: Mutex::new(0),
-    });
     HttpServer::new(move || {
         App::new()
-            .app_data(counter.clone())
-            .service(macro_style)
-            .service(echo)
-            .route("/hey", web::get().to(manual_hello))
-            .route("/", web::get().to(index))
+            .configure(counting_config)
     })
     .bind(("127.0.0.1", 9988))?
     .run()
